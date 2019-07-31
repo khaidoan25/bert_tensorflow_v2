@@ -1,3 +1,6 @@
+from tqdm import tqdm
+import tensorflow as tf
+
 class InputFeatures():
     """
         A single set of features of data.
@@ -122,3 +125,10 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                         label_id=label_id))
 
     return features
+
+if __name__ == "__main__":
+
+    # Check whether gpu is available
+    device = tf.device("/device:GPU:0" if tf.test.is_gpu_available() else "/cpu:0")
+
+    
