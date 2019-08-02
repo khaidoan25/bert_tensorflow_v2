@@ -40,7 +40,7 @@ class BertConfig():
             vocab_size: Vocabulary size of 'inputs_ids' in 'BertModel'.
             hidden_size: Size of the encoder layers and the pooler layer.
             num_hidden_layers: Number of hidden layers in the Transformer encoder.
-            num_attention_head: Number of attention heads for each attention layer in
+            num_attention_heads: Number of attention heads for each attention layer in
                 the Transformer encoder.
             intermediate_size: The size of 'intermediate' (i.e., feed-forward)
                 layer in the Transformer encoder.
@@ -149,8 +149,19 @@ class BERTEmbeddings(Layer):
 class BERTSelfAttention(Layer):
     def __init__(self, config):
         super().__init__()
-        
+        if config.hidden_size % config.num_attention_heads != 0:
+            raise ValueError(
+                "The hidden size (%d) is not a multiple of the number of attention "
+                "heads (%d)" % (config.hidden_size, config.num_attention_heads))
+        self.num_attention_heads = config.num_attention_heads
+        self.attention_head_size = config.hidden_size / config.num_attention_heads
+        self.all_head_size = self.num_attention_heads * self.attention_head_size
 
+        self.query = Dense(self.all_head_size, input_shape=(config.hidden_size,))
+        self.key = Dense(self.all_head_size, input_shape=(config.hidden_size,))
+        self.value = Dense(self.all_head_size, input_shape=(config.hidden_size,))
+
+        self.dropout = Dropout(config.attention_probs_dropout_prob)
 
 if __name__ == "__main__":
     pass
