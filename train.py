@@ -58,7 +58,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
             # Account for [CLS], [SEP], [SEP] with "- 3"
             _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
         else:
-            #BERT single case
+            # BERT single case
             # Account for [CLS] and [SEP] with "- 2"
             if len(tokens_a) > max_seq_length - 2:
                 tokens_a = tokens_a[0:(max_seq_length - 2)]

@@ -1,11 +1,11 @@
 """Tensorflow BERT model."""
 
 import tensorflow as tf
-from tensorflow.keras.layers import Layer
 import math
 import json
 import copy
 import six
+from tensorflow.python.keras.layers import Layer, Embedding, Dropout
 
 def gelu(x):
     """
@@ -14,7 +14,8 @@ def gelu(x):
         0.5 * x * (1 + tf.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * tf.pow(x, 3))))
     """
 
-    return x * 0.5 * (1.0 + tf.erf(x / math.sqrt(2.0)))
+    return x * 0.5 * (1.0 + tf.math.erf(x / math.sqrt(2.0)))
+
 
 class BertConfig():
     """
@@ -109,3 +110,26 @@ class BERTLayerNorm(Layer):
         std = tf.math.reduce_mean(tf.pow(x - mean, 2), axis=-1, keepdims=True)
         x = (x - mean) / tf.math.sqrt(std + self.variance_epsilon)
         return self.gamma * x + self.beta
+
+class BERTEmbeddings(Layer):
+    def __init__(self, config):
+        """
+            Construct the embedding module from word, position and token_type embeddings.
+        """
+        super().__init__()
+        self.token_embeddings = Embedding(config.vocab_size, config.hidden_size)
+        self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size)
+        self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size)
+
+        # self.LayerNorm is not snake-cased to stick
+        # with TensorFlow model variable name and be able to load
+        # any TensorFlow checkpoint file
+        self.LayerNorm = BERTLayerNorm(config)
+        self.dropout = Dropout(config.hidden_dropout_prob)
+
+    def forward(self, input_ids, token_type_ids=None):
+        seq_length = input_ids.size(1)
+        position_ids = tf.range(seq_length)
+        position_ids = tf.expand_dims(position_ids, 0)
+
+if __name__ == "__main__":
