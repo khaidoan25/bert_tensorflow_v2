@@ -5,7 +5,7 @@ import math
 import json
 import copy
 import six
-from tensorflow.python.keras.layers import Layer, Embedding, Dropout
+from tensorflow.python.keras.layers import Layer, Embedding, Dropout, Dense
 
 def gelu(x):
     """
@@ -114,10 +114,10 @@ class BERTLayerNorm(Layer):
 class BERTEmbeddings(Layer):
     def __init__(self, config):
         """
-            Construct the embedding module from word, position and token_type embeddings.
+            Construct the embedding module from word, position and segment embeddings.
         """
         super().__init__()
-        self.token_embeddings = Embedding(config.vocab_size, config.hidden_size)
+        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size)
         self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size)
         self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size)
 
@@ -127,9 +127,30 @@ class BERTEmbeddings(Layer):
         self.LayerNorm = BERTLayerNorm(config)
         self.dropout = Dropout(config.hidden_dropout_prob)
 
-    def forward(self, input_ids, token_type_ids=None):
+    def forward(self, input_ids, segment_ids=None):
+
+        # shape of input_ids (batch_size x seq_length)
         seq_length = input_ids.size(1)
         position_ids = tf.range(seq_length)
-        position_ids = tf.expand_dims(position_ids, 0)
+        position_ids = tf.broadcast_to(position_ids, input_ids.shape)
+        if segment_ids is None:
+            segment_ids = tf.zeros_like(input_ids)
+
+        word_embeddings = self.word_embeddings(input_ids)
+        position_embeddings = self.position_embeddings(position_ids)
+        segment_embeddings = self.segment_embeddings(segment_ids)
+
+        # sum over 3 types of embedding, follow by layernorm and dropout layer
+        embeddings = word_embeddings + position_embeddings + segment_embeddings
+        embeddings = self.LayerNorm(embeddings)
+        embeddings = self.dropout(embeddings)
+        return embeddings
+
+class BERTSelfAttention(Layer):
+    def __init__(self, config):
+        super().__init__()
+        
+
 
 if __name__ == "__main__":
+    pass
