@@ -130,21 +130,21 @@ class BERTEmbeddings(Layer):
     def forward(self, input_ids, segment_ids=None):
 
         # shape of input_ids (batch_size x seq_length)
-        seq_length = input_ids.size(1)
+        seq_length = input_ids.shape[1]
         position_ids = tf.range(seq_length)
         position_ids = tf.broadcast_to(position_ids, input_ids.shape)
         if segment_ids is None:
             segment_ids = tf.zeros_like(input_ids)
 
-        word_embeddings = self.word_embeddings(input_ids)
-        position_embeddings = self.position_embeddings(position_ids)
-        segment_embeddings = self.segment_embeddings(segment_ids)
+        word_embeddings = self.word_embeddings(input_ids)   # shape: batch_size x seq_length x hidden_size
+        position_embeddings = self.position_embeddings(position_ids)    # shape: batch_size x seq_length x hidden_size
+        segment_embeddings = self.segment_embeddings(segment_ids)   # shape: batch_size x seq_length x hidden_size
 
         # sum over 3 types of embedding, follow by layernorm and dropout layer
         embeddings = word_embeddings + position_embeddings + segment_embeddings
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
-        return embeddings
+        return embeddings   # shape: batch_size x seq_length x hidden_size
 
 class BERTSelfAttention(Layer):
     def __init__(self, config):
@@ -162,6 +162,93 @@ class BERTSelfAttention(Layer):
         self.value = Dense(self.all_head_size, input_shape=(config.hidden_size,))
 
         self.dropout = Dropout(config.attention_probs_dropout_prob)
+
+    def transpose_for_scores(self, x):
+        # x shape: batch_size x seq_length x attention_head_size*num_attention_heads
+        # to shape: batch_size x num_attention_heads x seq_length x attention_head_size
+        output_tensor = tf.reshape(x, [x.shape[0], x.shape[1], self.num_attention_heads, self.attention_head_size])
+        output_tensor = tf.transpose(output_tensor, [0, 2, 1, 3])
+        return output_tensor
+
+    def forward(self, hidden_states, attention_mask):
+        # hidden_states: this actually includes from_tensor and to_tensor
+        # but in SelfAttention from_tensor and to_tensor are identical.
+        # hidden_states shape: batch_size x seq_length x hidden_size
+
+        # => In inference phase, we need to add batch_size = 1 dimension
+        # to the input
+        
+        # shape of mixed_query|key|value_layer:
+        # batch_size x seq_length x attention_head_size*num_attention_heads
+        mixed_query_layer = self.query(hidden_states)
+        mixed_key_layer = self.key(hidden_states)
+        mixed_value_layer = self.value(hidden_states)
+
+        # shape: batch_size x num_attention_heads x seq_lenth x attention_head_size
+        query_layer = self.transpose_for_scores(mixed_query_layer)
+        key_layer = self.transpose_for_scores(mixed_key_layer)
+        valu_layer = self.transpose_for_scores(mixed_value_layer)
+        
+        # Take the dot product between "query" and "key" to get the raw attention scores.
+        # shape: batch_size x num_attention_heads x seq_length x seq_length
+        attention_scores = tf.matmul(query_layer, key_layer)
+        attention_scores /= math.sqrt(self.attention_head_size)
+
+        # Apply the attention mask (is precomputed for all layers in BertModel forward() function)
+        # This desired from input_mask in InputFeatures
+        attention_scores += attention_mask
+
+        # Normalize the attention scores to probabilities.
+        # shape: batch_size x num_attention_heads x seq_length x seq_length
+        attention_probs = tf.nn.softmax(attention_scores, axis=-1)
+
+        # This is actually dropping out entire tokens to attend to, which might
+        # seem a bit unusual, but is taken from the original Transformer paper.
+        attention_probs = self.dropout(attention_probs)
+
+        # shape: batch_size x num_attention_heads x seq_length x attention_head_size
+        context_layer = tf.matmul(attention_probs, value_layer)
+        # shape: batch_size x seq_length x num_attention_heads x attention_head_size
+        context_layer = tf.transpose(context_layer, [0, 2, 1, 3])
+        # shape: batch_size x seq_length x num_attention_heads*attention_head_size
+        context_layer = tf.reshape(context_layer, [context_layer.shape[0], context_layer.shape[1], self.num_attention_heads * self.attention_head_size])
+        return context_layer
+
+class BERTSelfOutput(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = Dense(config.hidden_size, config.hidden_size)
+        self.LayerNorm = BERTLayerNorm(config)
+        self.dropout = Dropout(config.hidden_dropout_probs)
+
+    def forward(self, hidden_states, input_tensor):
+        """
+            Args:
+                hidden_states: output of BERTSelfAttention
+                    shape: batch_size x seq_length x num_attention_heads*attention_head_size
+                input_tensor: output of BERTEmbedding, use for residual layer
+                    shape: batch_size x seq_length x hidden_size
+        """
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        return hidden_states
+
+class BERTAttention(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.selfattention = BERTSelfAttention(config)
+        self.output = BERTSelfOutput(config)
+
+    def forward(self, input_tensor, attention_mask):
+        """
+            Args:
+                attention_mask: 1.0 for sequence, 0.0 for padding.
+                input_tensor: output of BERTEmbedding.
+        """
+        self_output = self.selfattention(input_tensor, attention_mask)
+        attention_output = self.output(self_output)
+        return attention_output
 
 if __name__ == "__main__":
     pass
