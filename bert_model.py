@@ -60,7 +60,7 @@ class BertConfig():
         """
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
-        self.num_hiddne_layers = num_hidden_layers
+        self.num_hidden_layers = num_hidden_layers
         self.intermediate_size = intermediate_size
         self.hidden_act = hidden_act
         self.hidden_dropout = hidden_dropout
@@ -106,6 +106,15 @@ class BERTLayerNorm(Layer):
         self.variance_epsilon = variance_epsilon
 
     def forward(self, x):
+        """
+            Calculate mean, std follow hidden_size dimension. Not like BatchNorm, which is
+            calculated follow batch size dimension
+            => Each sample has a particular (mean, std).
+
+            Args:
+                x: tensor with shape batch_size x seq_length x hidden_size.
+        """
+
         mean = tf.math.reduce_mean(x, axis=-1, keepdims=True)
         std = tf.math.reduce_mean(tf.pow(x - mean, 2), axis=-1, keepdims=True)
         x = (x - mean) / tf.math.sqrt(std + self.variance_epsilon)
@@ -128,23 +137,33 @@ class BERTEmbeddings(Layer):
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def forward(self, input_ids, segment_ids=None):
+        """
+            Args:
+                input_ids: each entry is idex of that word in vocabulary.
+                    shape: batch_size x seq_length x 
+                segment_ids: segment sentence A vs sentence B.
+        """
 
-        # shape of input_ids (batch_size x seq_length)
         seq_length = input_ids.shape[1]
         position_ids = tf.range(seq_length)
         position_ids = tf.broadcast_to(position_ids, input_ids.shape)
         if segment_ids is None:
             segment_ids = tf.zeros_like(input_ids)
 
-        word_embeddings = self.word_embeddings(input_ids)   # shape: batch_size x seq_length x hidden_size
-        position_embeddings = self.position_embeddings(position_ids)    # shape: batch_size x seq_length x hidden_size
-        segment_embeddings = self.segment_embeddings(segment_ids)   # shape: batch_size x seq_length x hidden_size
+        # shape: batch_size x seq_length x hidden_size
+        word_embeddings = self.word_embeddings(input_ids)
+        # shape: batch_size x seq_length x hidden_size
+        position_embeddings = self.position_embeddings(position_ids)
+        # shape: batch_size x seq_length x hidden_size
+        segment_embeddings = self.segment_embeddings(segment_ids)
 
         # sum over 3 types of embedding, follow by layernorm and dropout layer
         embeddings = word_embeddings + position_embeddings + segment_embeddings
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
-        return embeddings   # shape: batch_size x seq_length x hidden_size
+
+        # shape: batch_size x seq_length x hidden_size
+        return embeddings
 
 class BERTSelfAttention(Layer):
     def __init__(self, config):
@@ -164,19 +183,32 @@ class BERTSelfAttention(Layer):
         self.dropout = Dropout(config.attention_probs_dropout_prob)
 
     def transpose_for_scores(self, x):
-        # x shape: batch_size x seq_length x attention_head_size*num_attention_heads
-        # to shape: batch_size x num_attention_heads x seq_length x attention_head_size
+        """
+            Args:
+                x: a tensor with shape batch_size x seq_length x attention_head_size*num_attention_heads
+        """
+
         output_tensor = tf.reshape(x, [x.shape[0], x.shape[1], self.num_attention_heads, self.attention_head_size])
         output_tensor = tf.transpose(output_tensor, [0, 2, 1, 3])
+
+        # shape: batch_size x num_attention_heads x seq_length x attention_head_size
         return output_tensor
 
     def forward(self, hidden_states, attention_mask):
-        # hidden_states: this actually includes from_tensor and to_tensor
-        # but in SelfAttention from_tensor and to_tensor are identical.
-        # hidden_states shape: batch_size x seq_length x hidden_size
+        """
+            Args:
+                hidden_states: this actually includes from_tensor and to_tensor
+                but in SelfAttention from_tensor and to_tensor are identical.
+                    shape: batch_size x seq_length x hidden_size
+                => In inference phase, we need to add batch_size = 1 dimension
+                to the input
 
-        # => In inference phase, we need to add batch_size = 1 dimension
-        # to the input
+                attention_mask: is precomputed for all layers in BERTModel forward() function.
+                                This desired from input_mask in InputFeatures.
+                                See the details in BERTModel().
+                    shape: batch_size x 1 x seq_length x seq_length
+        """
+        
         
         # shape of mixed_query|key|value_layer:
         # batch_size x seq_length x attention_head_size*num_attention_heads
@@ -187,15 +219,14 @@ class BERTSelfAttention(Layer):
         # shape: batch_size x num_attention_heads x seq_lenth x attention_head_size
         query_layer = self.transpose_for_scores(mixed_query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
-        valu_layer = self.transpose_for_scores(mixed_value_layer)
+        value_layer = self.transpose_for_scores(mixed_value_layer)
         
         # Take the dot product between "query" and "key" to get the raw attention scores.
         # shape: batch_size x num_attention_heads x seq_length x seq_length
         attention_scores = tf.matmul(query_layer, key_layer)
         attention_scores /= math.sqrt(self.attention_head_size)
 
-        # Apply the attention mask (is precomputed for all layers in BertModel forward() function)
-        # This desired from input_mask in InputFeatures
+        # Apply the attention mask
         attention_scores += attention_mask
 
         # Normalize the attention scores to probabilities.
@@ -219,18 +250,19 @@ class BERTSelfOutput(Layer):
         super().__init__()
         self.dense = Dense(config.hidden_size, config.hidden_size)
         self.LayerNorm = BERTLayerNorm(config)
-        self.dropout = Dropout(config.hidden_dropout_probs)
+        self.dropout = Dropout(config.hidden_dropout_prob)
 
     def forward(self, hidden_states, input_tensor):
         """
             Args:
                 hidden_states: output of BERTSelfAttention
                     shape: batch_size x seq_length x num_attention_heads*attention_head_size
-                input_tensor: output of BERTEmbedding, use for residual layer
+                input_tensor: output of BERTEmbedding, use for residual connection
                     shape: batch_size x seq_length x hidden_size
         """
         hidden_states = self.dense(hidden_states)
         hidden_states = self.dropout(hidden_states)
+        # apply residual connection
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
@@ -248,7 +280,194 @@ class BERTAttention(Layer):
         """
         self_output = self.selfattention(input_tensor, attention_mask)
         attention_output = self.output(self_output)
+
+        # shape: batch_size x seq_length x hidden_size
         return attention_output
+
+class BERTIntermediate(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = Dense(config.intermediate_size, input_shape=(config.hidden_size,))
+        self.intermediate_act_fn = gelu
+
+    def forward(self, hidden_states):
+        """
+            Args:
+                hidden_states: output of BERTAttention.
+                    shape: batch_size x seq_length x hidden_size.
+        """
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)
+
+        # shape: batch_size x seq_length x intermediate_size
+        return hidden_states
+
+class BERTOutput(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = Dense(config.hidden_size, input_shape=(config.intermediate_size,))
+        self.LayerNorm = LayerNorm(config)
+        self.dropout = Dropout(config.hidden_dropout_prob)
+
+    def forward(self, hidden_states, input_tensor):
+        """
+            Args:
+                hidden_states: output of BERTIntermediate.
+                    shape: batch_size x seq_length x intermediate_size.
+                input_tensor: output of BERTAttention.
+                    shape: batch_size x seq_length x hidden_size.
+                    use for residual connection
+        """
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        # apply residual connection
+        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+
+        # shape: batch_size x seq_length x hidden_size
+        return hidden_states
+
+class BERTLayer(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.attention = BERTAttention(config)
+        self.intermediate = BERTIntermediate(config)
+        self.output = BERTOutput(config)
+
+    def forward(self, input_tensor, attention_mask):
+        """
+            Args:
+                input_tensor: output of BERTEmbedding layer.
+                attention_mask: attention_mask: 1.0 for sequence, 0.0 for padding.
+        """
+        attention_output = self.attention(input_tensor, attention_mask)
+        intermediate_output = self.intermediate(attention_output)
+        bert_layer_output = self.output(intermediate_output, attention_output)
+
+        # shape: batch_size x seq_length x hidden_size
+        return bert_layer_output
+
+class BERTEncoder(Layer):
+    def __init__(self, config):
+        super().__init__()
+        bert_layer = BERTLayer(config)
+        self.config = config
+        self.layer = tf.keras.models.Sequential()
+        for _ in range(config.num_hidden_layers):
+            self.layer.add(bert_layer)
+
+    def forward(self, hidden_states, attention_mask):
+        """
+            Args:
+                hidden_states: output of BERTEmbedding layer.
+                    shape: batch_size x seq_length x hidden_size.
+                attention_mask: attention_mask: attention_mask: 1.0 for sequence, 0.0 for padding.
+                    shape: batch_size x seq_length x hidden_size.
+        """
+
+        for idx in range(self.config.num_hidden_layers):
+            hidden_states = self.layer.get_layer(index=idx)(hidden_states, attention_mask)
+
+        # shape: batch_size x seq_length x hidden_size
+        return hidden_states
+
+class BERTPooler(Layer):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = Dense(config.hidden_size, input_shape=(config.hidden_size,))
+        self.activation = tf.nn.tanh
+
+    def forward(self, hidden_states):
+        """
+            We "pool" the model by simply taking the hidden state corresponding
+            to the first token.
+
+            Args:
+                hidden_states: output of BERTEncoder.
+                    shape: batch_size x seq_length x hidden_size.
+        """
+        # shape: batch_size x hidden_size
+        cls_hidden_state = hidden_states[:, 0]
+        cls_hidden_state = dense(cls_hidden_state)
+        pooled_output = self.activation(cls_hidden_state)
+
+        # shape: batch_size x hidden_size
+        return pooled_output
+
+class BERTModel(Layer):
+    def __init__(self, config: BertConfig):
+        super().__init__()
+        self.embedding = BERTEmbeddings(config)
+        self.encoder = BERTEncoder(config)
+        self.pooler = BERTPooler(config)
+
+    def forward(self, input_ids, segment_ids=None, attention_mask=None):
+        """
+            Args:
+                input_ids: each entry is idex of that word in vocabulary.
+                    shape: batch_size x seq_length
+                segment_ids: segment sentence A vs sentence B.
+                    shape: batch_size x seq_length
+                attention_mask: segment sentence A + B with padding.
+                    shape: batch_size x seq_length
+        """
+        if attention_mask is None:
+            attention_mask = tf.ones_like(input_ids)
+        if segment_ids is None:
+            segment_ids = tf.zeros_like(input_ids)
+
+        # We create a 3D attention mask from a 2D tensor mask.
+        # Sizes are [batch_size, 1, from_seq_length, to_seq_length].
+        # But BERTModel only uses self attention => from_seq_length = to_seq_length
+        # So we can broadcast to [batch_size, num_heads, from_seq_length, to_seq_length]
+        # with attention_mask of shape [batch_size, 1, 1, hidden_size].
+
+        # This attention mask is more simple than the triangular masking of causal attention
+        # used in OpenAI GPT, we just need to prepare the broadcast dimension here.
+        extended_attention_mask = tf.expand_dims(tf.expand_dims(attention_mask, axis=[1]), axis=[1])
+        
+        # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+        # masked positions, this operation will create a tensor which is 0.0 for
+        # positions we want to attend and -10000.0 for masked positions.
+        # Since we are adding it to the raw scores before the softmax, this is
+        # effectively the same as removing these entirely.
+        extended_attention_mask = tf.cast(extended_attention_mask, tf.float32)
+        extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+
+        embedding_output = self.embedding(input_ids, segment_ids)
+        encoder_output = self.encoder(embedding_output, extended_attention_mask)
+        pooler_output = self.pooler(encoder_output)
+
+        # shape: batch_size x hidden_size
+        return pooler_output
+
+class BertForSequenceClassification(Layer):
+    """
+        BERT model for classification.
+        This module is composed of the BERT model with a linear layer on top of
+        the pooled output.
+
+        Example usage:
+        ```python
+            # Already been converted into WordPiece token ids
+            input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+            input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+            segment_ids = torch.LongTensor([[0, 0, 1], [0, 2, 0]])
+
+            config = BertConfig(vocab_size=32000, hidden_size=512,
+                num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
+
+            num_labels = 2
+
+            model = BertForSequenceClassification(config, num_labels)
+            logits = model(input_ids, segment_ids, input_mask)
+    """
+    def __init__(self, config, num_labels):
+        super().__init__()
+        self.bert = BERTModel(config)
+        self.dropout = Dropout(config.hidden_dropout_prob)
+        self.classifier = Dense(num_labels, input_shape=(config.hidden_size,))
+
+        
 
 if __name__ == "__main__":
     pass
