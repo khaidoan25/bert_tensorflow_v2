@@ -5,7 +5,7 @@ import math
 import json
 import copy
 import six
-from tensorflow.python.keras.layers import Model, Embedding, Dropout, Dense
+from tensorflow.python.keras.layers import Model, Embedding, Dropout, Dense, LayerNormalization
 from tensorflow.python.keras import Model
 
 def gelu(x):
@@ -16,6 +16,9 @@ def gelu(x):
     """
 
     return x * 0.5 * (1.0 + tf.math.erf(x / math.sqrt(2.0)))
+
+def create_initializer(initializer_range=0.02):
+    return tf.keras.initializers.TruncatedNormal(stddev=initializer_range)
 
 
 class BertConfig():
@@ -95,31 +98,31 @@ class BertConfig():
         return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
 
 
-class BERTLayerNorm(Model):
-    def __init__(self, config, variance_epsilon=1e-12):
-        """
-            Construct a layernorm module in the TF style (epsilon inside the square root).
-        """
+# class BERTLayerNorm(Model):
+#     def __init__(self, config, variance_epsilon=1e-12):
+#         """
+#             Construct a layernorm module in the TF style (epsilon inside the square root).
+#         """
 
-        super().__init__()
-        self.gamma = tf.Variable(tf.ones(config.hidden_size))
-        self.beta = tf.Variable(tf.zeros(config.hidden_size))
-        self.variance_epsilon = variance_epsilon
+#         super().__init__()
+#         self.gamma = tf.Variable(tf.ones(config.hidden_size))
+#         self.beta = tf.Variable(tf.zeros(config.hidden_size))
+#         self.variance_epsilon = variance_epsilon
 
-    def call(self, x):
-        """
-            Calculate mean, std follow hidden_size dimension. Not like BatchNorm, which is
-            calculated follow batch size dimension
-            => Each sample has a particular (mean, std).
+#     def call(self, x):
+#         """
+#             Calculate mean, std follow hidden_size dimension. Not like BatchNorm, which is
+#             calculated follow batch size dimension
+#             => Each sample has a particular (mean, std).
 
-            Args:
-                x: tensor with shape batch_size x seq_length x hidden_size.
-        """
+#             Args:
+#                 x: tensor with shape batch_size x seq_length x hidden_size.
+#         """
 
-        mean = tf.math.reduce_mean(x, axis=-1, keepdims=True)
-        std = tf.math.reduce_mean(tf.pow(x - mean, 2), axis=-1, keepdims=True)
-        x = (x - mean) / tf.math.sqrt(std + self.variance_epsilon)
-        return self.gamma * x + self.beta
+#         mean = tf.math.reduce_mean(x, axis=-1, keepdims=True)
+#         std = tf.math.reduce_mean(tf.pow(x - mean, 2), axis=-1, keepdims=True)
+#         x = (x - mean) / tf.math.sqrt(std + self.variance_epsilon)
+#         return self.gamma * x + self.beta
 
 class BERTEmbeddings(Model):
     def __init__(self, config):
@@ -127,14 +130,14 @@ class BERTEmbeddings(Model):
             Construct the embedding module from word, position and segment embeddings.
         """
         super().__init__()
-        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size)
+        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size, )
         self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size)
         self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size)
 
         # self.LayerNorm is not snake-cased to stick
         # with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
-        self.LayerNorm = BERTLayerNorm(config)
+        self.LayerNorm = LayerNormalization()
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, input_ids, segment_ids=None):
@@ -250,7 +253,7 @@ class BERTSelfOutput(Model):
     def __init__(self, config):
         super().__init__()
         self.dense = Dense(config.hidden_size, config.hidden_size)
-        self.LayerNorm = BERTLayerNorm(config)
+        self.LayerNorm = LayerNormalization()
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, hidden_states, input_tensor):
