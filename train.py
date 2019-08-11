@@ -1,5 +1,20 @@
 from tqdm import tqdm
 import tensorflow as tf
+import tokenization
+import numpy as np
+
+processors = {
+    "sentihood_single":Sentihood_single_Processor,
+    "sentihood_NLI_M":Sentihood_NLI_M_Processor,
+    "sentihood_QA_M":Sentihood_QA_M_Processor,
+    "sentihood_NLI_B":Sentihood_NLI_B_Processor,
+    "sentihood_QA_B":Sentihood_QA_B_Processor,
+    "semeval_single":Semeval_single_Processor,
+    "semeval_NLI_M":Semeval_NLI_M_Processor,
+    "semeval_QA_M":Semeval_QA_M_Processor,
+    "semeval_NLI_B":Semeval_NLI_B_Processor,
+    "semeval_QA_B":Semeval_QA_B_Processor,
+}
 
 class InputFeatures():
     """
@@ -125,6 +140,62 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
                         label_id=label_id))
 
     return features
+
+def prepare_dataloaders(task_name, 
+                        vocab_file,
+                        do_lower_case=True,
+                        data_dir,
+                        train_batch_size=64,
+                        num_train_epochs=100.0,
+                        max_seq_length=100
+                        test=False,
+                        eval_batch_size=8):
+    
+    processors = processors[task_name]()
+    # Ex: ['None', 'Positive', 'Negative']
+    label_list = processors.get_labels()
+
+    # Define tokenizer (use for Vietnamese need to chang this)
+    tokenizer = tokenization.FullTokenizer(
+        vocab_file=vocab_file, do_lower_case=do_lower_case
+    )
+
+    # Prepare training set
+    train_examples = processors.get_train_examples(data_dir)
+    num_train_steps = int(
+        len(train_examples) / train_batch_size * num_train_epochs
+    )
+
+    train_features = convert_examples_to_features(
+        train_examples, label_list, max_seq_length, tokenizer
+    )
+
+    all_input_ids = np.array([f.input_ids for f in train_features], dtype=np.int32)
+    all_input_mask = np.array([f.input_mask for f in train_features], dtype=np.int32)
+    all_segment_ids = np.array([f.segment_ids for f in train_features], dtype=np.int32)
+    all_label_ids = np.array([f.label_id for f in train_features], dtype=np.int32)
+
+    train_data = tf.data.Dataset.from_tensor_slices((all_input_ids, all_input_mask, all_segment_ids, all_label_ids)).shuffle(len(all_input_ids))
+    train_data = train_data.batch(train_batch_size)
+
+    if test:
+        test_examples = processors.get_test_examples(data_dir)
+        test_features = convert_examples_to_features(
+            test_examples, label_list, max_seq_length, tokenizer
+        )
+
+        all_input_ids = np.array([f.input_ids for f in test_features], dtype=np.int32)
+        all_input_mask = np.array([f.input_mask for f in test_features], dtype=np.int32)
+        all_segment_ids = np.array([f.segment_ids for f in test_features], dtype=np.int32)
+        all_label_ids = np.array([f.label_id for f in test_features], dtype=np.int32)
+
+        test_data = tf.data.Dataset.from_tensor_slices((all_input_ids, all_input_mask, all_segment_ids, all_label_ids))
+        test_data = test_data.batch(eval_batch_size)
+        return train_data, test_data
+    return train_data
+
+
+
 
 if __name__ == "__main__":
 

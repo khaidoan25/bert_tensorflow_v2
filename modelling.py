@@ -492,5 +492,6 @@ class BertForSequenceClassification(Model):
             return probabilities
 
 if __name__ == "__main__":
-    bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/ABSA-BERT-pair-master/uncased_L-12_H-768_A-12/bert_config.json")
-    a = BERTIntermediate(bert_config)
+    bert_config = BertConfig.from_json_file("D:\ABSA\ABSA-BERT-pair-test\multi_cased_L-12_H-768_A-12\\bert_config.json")
+    model = BertForSequenceClassification(bert_config, 4)
+    model.summary()
