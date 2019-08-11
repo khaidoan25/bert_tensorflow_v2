@@ -310,7 +310,7 @@ class BERTOutput(Model):
     def __init__(self, config):
         super().__init__()
         self.dense = Dense(config.hidden_size, input_shape=(config.intermediate_size,), kernel_initializer=create_initializer(config.initializer_range))
-        self.LayerNorm = LayerNorm(config)
+        self.LayerNorm = LayerNormalization()
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, hidden_states, input_tensor):
@@ -477,11 +477,11 @@ class BertForSequenceClassification(Model):
         _, pooled_output = self.bert(input_ids, segment_ids, attention_mask)
         pooled_output = self.dropout(pooled_output)
         # shape: batch_size x num_labels
-        logits = self.classfier(pooled_output)
+        logits = self.classifier(pooled_output)
 
         # Calculate probabilities
         # shape: batch_size x num_labels
-        probabilites = tf.nn.softmax(logits)
+        probabilities = tf.nn.softmax(logits)
 
 
         if labels is not None:
@@ -489,7 +489,7 @@ class BertForSequenceClassification(Model):
             loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels, logits)
             return loss, probabilities
         else:
-            return loss
+            return probabilities
 
 if __name__ == "__main__":
     bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/ABSA-BERT-pair-master/uncased_L-12_H-768_A-12/bert_config.json")
