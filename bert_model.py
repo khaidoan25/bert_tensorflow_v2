@@ -5,7 +5,7 @@ import math
 import json
 import copy
 import six
-from tensorflow.python.keras.layers import Model, Embedding, Dropout, Dense, LayerNormalization
+from tensorflow.python.keras.layers import Embedding, Dropout, Dense, LayerNormalization
 from tensorflow.python.keras import Model
 
 def gelu(x):
@@ -130,9 +130,9 @@ class BERTEmbeddings(Model):
             Construct the embedding module from word, position and segment embeddings.
         """
         super().__init__()
-        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size, )
-        self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size)
-        self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size)
+        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
+        self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
+        self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
 
         # self.LayerNorm is not snake-cased to stick
         # with TensorFlow model variable name and be able to load
@@ -180,9 +180,9 @@ class BERTSelfAttention(Model):
         self.attention_head_size = config.hidden_size / config.num_attention_heads
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = Dense(self.all_head_size, input_shape=(config.hidden_size,))
-        self.key = Dense(self.all_head_size, input_shape=(config.hidden_size,))
-        self.value = Dense(self.all_head_size, input_shape=(config.hidden_size,))
+        self.query = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
+        self.key = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
+        self.value = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
 
         self.dropout = Dropout(config.attention_probs_dropout_prob)
 
@@ -252,7 +252,7 @@ class BERTSelfAttention(Model):
 class BERTSelfOutput(Model):
     def __init__(self, config):
         super().__init__()
-        self.dense = Dense(config.hidden_size, config.hidden_size)
+        self.dense = Dense(config.hidden_size, config.hidden_size, kernel_initializer=create_initializer(config.initializer_range))
         self.LayerNorm = LayerNormalization()
         self.dropout = Dropout(config.hidden_dropout_prob)
 
@@ -291,7 +291,7 @@ class BERTAttention(Model):
 class BERTIntermediate(Model):
     def __init__(self, config):
         super().__init__()
-        self.dense = Dense(config.intermediate_size, input_shape=(config.hidden_size,))
+        self.dense = Dense(config.intermediate_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
         self.intermediate_act_fn = gelu
 
     def call(self, hidden_states):
@@ -309,7 +309,7 @@ class BERTIntermediate(Model):
 class BERTOutput(Model):
     def __init__(self, config):
         super().__init__()
-        self.dense = Dense(config.hidden_size, input_shape=(config.intermediate_size,))
+        self.dense = Dense(config.hidden_size, input_shape=(config.intermediate_size,), kernel_initializer=create_initializer(config.initializer_range))
         self.LayerNorm = LayerNorm(config)
         self.dropout = Dropout(config.hidden_dropout_prob)
 
@@ -377,7 +377,7 @@ class BERTEncoder(Model):
 class BERTPooler(Model):
     def __init__(self, config):
         super().__init__()
-        self.dense = Dense(config.hidden_size, input_shape=(config.hidden_size,))
+        self.dense = Dense(config.hidden_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
         self.activation = tf.nn.tanh
 
     def call(self, hidden_states):
@@ -389,13 +389,15 @@ class BERTPooler(Model):
                 hidden_states: output of BERTEncoder.
                     shape: batch_size x seq_length x hidden_size.
         """
+        # shape: batch_size x seq_length x hidden_size
+        cls_hidden_state = hidden_states
+        cls_hidden_state = self.dense(cls_hidden_state)
+        sequence_output = self.activation(cls_hidden_state)
         # shape: batch_size x hidden_size
-        cls_hidden_state = hidden_states[:, 0]
-        cls_hidden_state = dense(cls_hidden_state)
-        pooled_output = self.activation(cls_hidden_state)
+        pooled_output = sequence_output[:, 0]
 
-        # shape: batch_size x hidden_size
-        return pooled_output
+        # shape: batch_size x seq_length x hidden_size, batch_size x hidden_size
+        return sequence_output, pooled_output
 
 class BERTModel(Model):
     def __init__(self, config: BertConfig):
@@ -439,10 +441,10 @@ class BERTModel(Model):
 
         embedding_output = self.embedding(input_ids, segment_ids)
         encoder_output = self.encoder(embedding_output, extended_attention_mask)
-        pooler_output = self.pooler(encoder_output)
+        sequence_output, pooler_output = self.pooler(encoder_output)
 
-        # shape: batch_size x hidden_size
-        return pooler_output
+        # shape: batch_size x seq_length x hidden_size, batch_size x hidden_size
+        return sequence_output, pooler_output
 
 class BertForSequenceClassification(Model):
     """
@@ -463,17 +465,31 @@ class BertForSequenceClassification(Model):
             num_labels = 2
 
             model = BertForSequenceClassification(config, num_labels)
-            logits = model(input_ids, segment_ids, input_mask)
+            probabilities, loss = model(input_ids, segment_ids, input_mask)
     """
     def __init__(self, config, num_labels):
         super().__init__()
         self.bert = BERTModel(config)
         self.dropout = Dropout(config.hidden_dropout_prob)
-        self.classifier = Dense(num_labels, input_shape=(config.hidden_size,))
+        self.classifier = Dense(num_labels, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
 
-        # def init_weights(module):
+    def call(self, input_ids, segment_ids, attention_mask, labels=None):
+        _, pooled_output = self.bert(input_ids, segment_ids, attention_mask)
+        pooled_output = self.dropout(pooled_output)
+        # shape: batch_size x num_labels
+        logits = self.classfier(pooled_output)
+
+        # Calculate probabilities
+        # shape: batch_size x num_labels
+        probabilites = tf.nn.softmax(logits)
 
 
+        if labels is not None:
+            # Calculate loss
+            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels, logits)
+            return loss, probabilities
+        else:
+            return loss
 
 if __name__ == "__main__":
     bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/ABSA-BERT-pair-master/uncased_L-12_H-768_A-12/bert_config.json")
