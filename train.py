@@ -1,20 +1,30 @@
+# import sys
+# import os
+# sys.path.append(os.path.join(os.getcwd()))
+# print(sys.path)
 from tqdm import tqdm
 import tensorflow as tf
-import tokenization
+import tokenization as tokenization
 import numpy as np
+from modelling import *
+from processor import (Semeval_NLI_B_Processor, Semeval_NLI_M_Processor,
+                    Semeval_QA_B_Processor, Semeval_QA_M_Processor,
+                    Semeval_single_Processor, Sentihood_NLI_B_Processor,
+                    Sentihood_NLI_M_Processor, Sentihood_QA_B_Processor,
+                    Sentihood_QA_M_Processor, Sentihood_single_Processor)
 
 processors = {
-    "sentihood_single":Sentihood_single_Processor,
-    "sentihood_NLI_M":Sentihood_NLI_M_Processor,
-    "sentihood_QA_M":Sentihood_QA_M_Processor,
-    "sentihood_NLI_B":Sentihood_NLI_B_Processor,
-    "sentihood_QA_B":Sentihood_QA_B_Processor,
-    "semeval_single":Semeval_single_Processor,
-    "semeval_NLI_M":Semeval_NLI_M_Processor,
-    "semeval_QA_M":Semeval_QA_M_Processor,
-    "semeval_NLI_B":Semeval_NLI_B_Processor,
-    "semeval_QA_B":Semeval_QA_B_Processor,
-}
+            "sentihood_single":Sentihood_single_Processor,
+            "sentihood_NLI_M":Sentihood_NLI_M_Processor,
+            "sentihood_QA_M":Sentihood_QA_M_Processor,
+            "sentihood_NLI_B":Sentihood_NLI_B_Processor,
+            "sentihood_QA_B":Sentihood_QA_B_Processor,
+            "semeval_single":Semeval_single_Processor,
+            "semeval_NLI_M":Semeval_NLI_M_Processor,
+            "semeval_QA_M":Semeval_QA_M_Processor,
+            "semeval_NLI_B":Semeval_NLI_B_Processor,
+            "semeval_QA_B":Semeval_QA_B_Processor,
+            }
 
 class InputFeatures():
     """
@@ -143,17 +153,17 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
 def prepare_dataloaders(task_name, 
                         vocab_file,
-                        do_lower_case=True,
                         data_dir,
+                        do_lower_case=True,
                         train_batch_size=64,
                         num_train_epochs=100.0,
-                        max_seq_length=100
+                        max_seq_length=100,
                         test=False,
                         eval_batch_size=8):
     
-    processors = processors[task_name]()
+    processor = processors[task_name]()
     # Ex: ['None', 'Positive', 'Negative']
-    label_list = processors.get_labels()
+    label_list = processor.get_labels()
 
     # Define tokenizer (use for Vietnamese need to chang this)
     tokenizer = tokenization.FullTokenizer(
@@ -161,7 +171,7 @@ def prepare_dataloaders(task_name,
     )
 
     # Prepare training set
-    train_examples = processors.get_train_examples(data_dir)
+    train_examples = processor.get_train_examples(data_dir)
     num_train_steps = int(
         len(train_examples) / train_batch_size * num_train_epochs
     )
@@ -179,7 +189,7 @@ def prepare_dataloaders(task_name,
     train_data = train_data.batch(train_batch_size)
 
     if test:
-        test_examples = processors.get_test_examples(data_dir)
+        test_examples = processor.get_test_examples(data_dir)
         test_features = convert_examples_to_features(
             test_examples, label_list, max_seq_length, tokenizer
         )
@@ -194,12 +204,26 @@ def prepare_dataloaders(task_name,
         return train_data, test_data
     return train_data
 
+def model_for_classification(bert_config,
+                             init_checkpoint,
+                             len_label_list):
 
+    model = BertForSequenceClassification(bert_config, len_label_list)
+    checkpoint = tf.train.Checkpoint(model=model)
+    checkpoint.restore(init_checkpoint)
+
+    return model
 
 
 if __name__ == "__main__":
 
     # Check whether gpu is available
-    device = tf.device("/device:GPU:0" if tf.test.is_gpu_available() else "/cpu:0")
-
-    
+    # device = tf.device("/device:GPU:0" if tf.test.is_gpu_available() else "/cpu:0")
+    bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_config.json")
+    model = model_for_classification(bert_config, "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_model.ckpt", 4)
+    # print(model.bert.get_weights())
+    train_data, test_data = prepare_dataloaders("semeval_NLI_M",
+                                                 "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/vocab.txt",
+                                                 "/home/ddkhai/Documents/ABSA/bert_tensorflow/data/semeval2014/bert-pair",
+                                                 test=True)
+    model.evaluate(test_data)
