@@ -1,0 +1,19 @@
+reader = ...
+model = ...
+# Call model for the first time
+
+for v in model.variables:
+    # Convert from our model namescope to match with old checkpoint namescope
+    name = v.name
+    name.replace('bert_for_sequence_classification/bert_model', 'bert')
+    name.replace(...)
+    ...
+
+    # get variable from checkpoint
+    ckpt_tensor = reader.get_tensor(name)
+    tf.compat.v1.assign(v, ckpt_tensor, validate_shape=True)
+
+# Save new model with new checkpoint topo.
+# remember to backup old checkpoint, in case we mess up everything!
+
+model.save(...)

@@ -209,21 +209,33 @@ def model_for_classification(bert_config,
                              len_label_list):
 
     model = BertForSequenceClassification(bert_config, len_label_list)
-    checkpoint = tf.train.Checkpoint(model=model)
-    checkpoint.restore(init_checkpoint)
+    restore_checkpoint = tf.train.Checkpoint(model=model.bert)
+    status = restore_checkpoint.restore(init_checkpoint)
 
+    f_input_ids = np.zeros((3, 100))
+    f_segment_ids = np.zeros((3, 100))
+    f_attention_mask = np.zeros((3, 100))
+    f_labels = np.zeros((3,))
+    f_labels = tf.cast(f_labels, tf.int32)
+    model(f_input_ids, f_segment_ids, f_attention_mask, f_labels)
+
+    status.assert_consumed()
+
+    # return model
     return model
 
-
+    
 if __name__ == "__main__":
 
     # Check whether gpu is available
     # device = tf.device("/device:GPU:0" if tf.test.is_gpu_available() else "/cpu:0")
     bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_config.json")
     model = model_for_classification(bert_config, "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_model.ckpt", 4)
-    # print(model.bert.get_weights())
-    train_data, test_data = prepare_dataloaders("semeval_NLI_M",
-                                                 "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/vocab.txt",
-                                                 "/home/ddkhai/Documents/ABSA/bert_tensorflow/data/semeval2014/bert-pair",
-                                                 test=True)
-    model.evaluate(test_data)
+    w = model.bert.get_weights()
+    # train_data, test_data = prepare_dataloaders("semeval_NLI_M",
+    #                                              "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/vocab.txt",
+    #                                              "/home/ddkhai/Documents/ABSA/bert_tensorflow/data/semeval2014/bert-pair",
+    #                                              test=True)
+
+    # model.compile(tf.keras.optimizers.Adam(), )
+    # model.evaluate(test_data)

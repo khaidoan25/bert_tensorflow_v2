@@ -354,10 +354,10 @@ class BERTLayer(Layer):
 class BERTEncoder(Layer):
     def __init__(self, config):
         super().__init__()
-        bert_layer = BERTLayer(config)
         self.config = config
         self.layers = []
         for _ in range(config.num_hidden_layers):
+            bert_layer = BERTLayer(config)
             self.layers.append(bert_layer)
 
     def call(self, hidden_states, attention_mask):
@@ -400,7 +400,7 @@ class BERTPooler(Layer):
         # shape: batch_size x seq_length x hidden_size, batch_size x hidden_size
         return sequence_output, pooled_output
 
-class BERTModel(Model):
+class BERTModel(Layer):
     def __init__(self, config: BertConfig):
         super().__init__()
         self.embedding = BERTEmbeddings(config)
@@ -469,7 +469,7 @@ class BertForSequenceClassification(Model):
             probabilities, loss = model(input_ids, segment_ids, input_mask)
     """
     def __init__(self, config, num_labels):
-        super().__init__()
+        super().__init__(name='')
         self.bert = BERTModel(config)
         self.dropout = Dropout(config.hidden_dropout_prob)
         self.classifier = Dense(num_labels, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
