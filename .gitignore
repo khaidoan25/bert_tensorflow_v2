@@ -102,8 +102,5 @@ venv.bak/
 
 # mypy
 .mypy_cache/
-<<<<<<< HEAD
 
 .uncased_L-12_H-768_A-12/
-=======
->>>>>>> da21de352f73866511c045d0a89f2971032bfc85

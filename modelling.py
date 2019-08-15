@@ -126,19 +126,28 @@ class BertConfig():
 #         return self.gamma * x + self.beta
 
 class BERTEmbeddings(Layer):
-    def __init__(self, config):
+    def __init__(self, config, name):
         """
             Construct the embedding module from word, position and segment embeddings.
         """
-        super().__init__()
-        self.word_embeddings = Embedding(config.vocab_size, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
-        self.position_embeddings = Embedding(config.max_position_embeddings, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
-        self.segment_embeddings = Embedding(config.type_vocab_size, config.hidden_size, embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02))
+        super().__init__(name=name)
+        self.word_embeddings = Embedding(config.vocab_size,
+                                         config.hidden_size,
+                                         embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02),
+                                         name="word_embeddings")
+        self.position_embeddings = Embedding(config.max_position_embeddings,
+                                             config.hidden_size,
+                                             embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02),
+                                             name="position_embeddings")
+        self.segment_embeddings = Embedding(config.type_vocab_size,
+                                            config.hidden_size,
+                                            embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02),
+                                            name="token_type_embeddings")
 
         # self.LayerNorm is not snake-cased to stick
         # with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
-        self.LayerNorm = LayerNormalization()
+        self.LayerNorm = LayerNormalization(name="LayerNorm")
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, input_ids, segment_ids=None):
@@ -171,8 +180,8 @@ class BERTEmbeddings(Layer):
         return embeddings
 
 class BERTSelfAttention(Layer):
-    def __init__(self, config):
-        super().__init__()
+    def __init__(self, config, name):
+        super().__init__(name=name)
         if config.hidden_size % config.num_attention_heads != 0:
             raise ValueError(
                 "The hidden size (%d) is not a multiple of the number of attention "
@@ -181,9 +190,18 @@ class BERTSelfAttention(Layer):
         self.attention_head_size = int(config.hidden_size / config.num_attention_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
 
-        self.query = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
-        self.key = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
-        self.value = Dense(self.all_head_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
+        self.query = Dense(self.all_head_size,
+                           input_shape=(config.hidden_size,),
+                           kernel_initializer=create_initializer(config.initializer_range),
+                           name="query")
+        self.key = Dense(self.all_head_size,
+                         input_shape=(config.hidden_size,),
+                         kernel_initializer=create_initializer(config.initializer_range),
+                         name="key")
+        self.value = Dense(self.all_head_size,
+                           input_shape=(config.hidden_size,),
+                           kernel_initializer=create_initializer(config.initializer_range),
+                           name="value")
 
         self.dropout = Dropout(config.attention_probs_dropout_prob)
 
@@ -251,10 +269,13 @@ class BERTSelfAttention(Layer):
         return context_layer
 
 class BERTSelfOutput(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = Dense(config.hidden_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
-        self.LayerNorm = LayerNormalization()
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.dense = Dense(config.hidden_size,
+                     input_shape=(config.hidden_size,),
+                     kernel_initializer=create_initializer(config.initializer_range),
+                     name="dense")
+        self.LayerNorm = LayerNormalization(name="LayerNorm")
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, hidden_states, input_tensor):
@@ -272,10 +293,10 @@ class BERTSelfOutput(Layer):
         return hidden_states
 
 class BERTAttention(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.selfattention = BERTSelfAttention(config)
-        self.attention_output = BERTSelfOutput(config)
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.selfattention = BERTSelfAttention(config, name="self")
+        self.attention_output = BERTSelfOutput(config, name="output")
 
     def call(self, input_tensor, attention_mask):
         """
@@ -290,9 +311,12 @@ class BERTAttention(Layer):
         return attention_output
 
 class BERTIntermediate(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = Dense(config.intermediate_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.dense = Dense(config.intermediate_size,
+                           input_shape=(config.hidden_size,),
+                           kernel_initializer=create_initializer(config.initializer_range),
+                           name="dense")
         self.intermediate_act_fn = gelu
 
     def call(self, hidden_states):
@@ -308,10 +332,13 @@ class BERTIntermediate(Layer):
         return hidden_states
 
 class BERTOutput(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = Dense(config.hidden_size, input_shape=(config.intermediate_size,), kernel_initializer=create_initializer(config.initializer_range))
-        self.LayerNorm = LayerNormalization()
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.dense = Dense(config.hidden_size,
+                           input_shape=(config.intermediate_size,),
+                           kernel_initializer=create_initializer(config.initializer_range),
+                           name="dense")
+        self.LayerNorm = LayerNormalization(name="LayerNorm")
         self.dropout = Dropout(config.hidden_dropout_prob)
 
     def call(self, hidden_states, input_tensor):
@@ -332,11 +359,11 @@ class BERTOutput(Layer):
         return hidden_states
 
 class BERTLayer(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.attention = BERTAttention(config)
-        self.intermediate = BERTIntermediate(config)
-        self.bert_layer_output = BERTOutput(config)
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.attention = BERTAttention(config, name="attention")
+        self.intermediate = BERTIntermediate(config, name="intermediate")
+        self.bert_layer_output = BERTOutput(config, name="output")
 
     def call(self, input_tensor, attention_mask):
         """
@@ -352,12 +379,12 @@ class BERTLayer(Layer):
         return bert_layer_output
 
 class BERTEncoder(Layer):
-    def __init__(self, config):
-        super().__init__()
+    def __init__(self, config, name):
+        super().__init__(name=name)
         self.config = config
         self.layers = []
-        for _ in range(config.num_hidden_layers):
-            bert_layer = BERTLayer(config)
+        for idx in range(config.num_hidden_layers):
+            bert_layer = BERTLayer(config, "layer_{}".format(idx))
             self.layers.append(bert_layer)
 
     def call(self, hidden_states, attention_mask):
@@ -376,9 +403,12 @@ class BERTEncoder(Layer):
         return hidden_states
 
 class BERTPooler(Layer):
-    def __init__(self, config):
-        super().__init__()
-        self.dense = Dense(config.hidden_size, input_shape=(config.hidden_size,), kernel_initializer=create_initializer(config.initializer_range))
+    def __init__(self, config, name):
+        super().__init__(name=name)
+        self.dense = Dense(config.hidden_size,
+                           input_shape=(config.hidden_size,),
+                           kernel_initializer=create_initializer(config.initializer_range),
+                           name="dense")
         self.activation = tf.nn.tanh
 
     def call(self, hidden_states):
@@ -400,12 +430,12 @@ class BERTPooler(Layer):
         # shape: batch_size x seq_length x hidden_size, batch_size x hidden_size
         return sequence_output, pooled_output
 
-class BERTModel(Layer):
+class BERTModel(Model):
     def __init__(self, config: BertConfig):
         super().__init__()
-        self.embedding = BERTEmbeddings(config)
-        self.encoder = BERTEncoder(config)
-        self.pooler = BERTPooler(config)
+        self.embedding = BERTEmbeddings(config, name="embeddings")
+        self.encoder = BERTEncoder(config, name="encoder")
+        self.pooler = BERTPooler(config, name="pooler")
 
     def call(self, input_ids, segment_ids=None, attention_mask=None):
         """

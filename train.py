@@ -208,8 +208,8 @@ def model_for_classification(bert_config,
                              init_checkpoint,
                              len_label_list):
 
-    model = BertForSequenceClassification(bert_config, len_label_list)
-    restore_checkpoint = tf.train.Checkpoint(model=model.bert)
+    model = BERTModel(bert_config)
+    restore_checkpoint = tf.train.Checkpoint(model=model)
     status = restore_checkpoint.restore(init_checkpoint)
 
     f_input_ids = np.zeros((3, 100))
@@ -217,7 +217,7 @@ def model_for_classification(bert_config,
     f_attention_mask = np.zeros((3, 100))
     f_labels = np.zeros((3,))
     f_labels = tf.cast(f_labels, tf.int32)
-    model(f_input_ids, f_segment_ids, f_attention_mask, f_labels)
+    model(f_input_ids, f_segment_ids, f_attention_mask)
 
     status.assert_consumed()
 
@@ -229,8 +229,8 @@ if __name__ == "__main__":
 
     # Check whether gpu is available
     # device = tf.device("/device:GPU:0" if tf.test.is_gpu_available() else "/cpu:0")
-    bert_config = BertConfig.from_json_file("/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_config.json")
-    model = model_for_classification(bert_config, "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/bert_model.ckpt", 4)
+    bert_config = BertConfig.from_json_file("D:/ABSA/ABSA-BERT-pair-test/uncased_L-12_H-768_A-12/bert_config.json")
+    model = model_for_classification(bert_config, "D:/ABSA/ABSA-BERT-pair-test/uncased_L-12_H-768_A-12/bert_model.ckpt", 4)
     w = model.bert.get_weights()
     # train_data, test_data = prepare_dataloaders("semeval_NLI_M",
     #                                              "/home/ddkhai/Documents/ABSA/uncased_L-12_H-768_A-12/vocab.txt",
