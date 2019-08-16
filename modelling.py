@@ -126,11 +126,11 @@ class BertConfig():
 #         return self.gamma * x + self.beta
 
 class BERTEmbeddings(Layer):
-    def __init__(self, config, name):
+    def __init__(self, config, name, trainable=False):
         """
             Construct the embedding module from word, position and segment embeddings.
         """
-        super().__init__(name=name)
+        super().__init__(name=name, trainable=trainable)
         self.word_embeddings = Embedding(config.vocab_size,
                                          config.hidden_size,
                                          embeddings_initializer=tf.initializers.TruncatedNormal(stddev=0.02),
@@ -180,8 +180,8 @@ class BERTEmbeddings(Layer):
         return embeddings
 
 class BERTSelfAttention(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         if config.hidden_size % config.num_attention_heads != 0:
             raise ValueError(
                 "The hidden size (%d) is not a multiple of the number of attention "
@@ -269,8 +269,8 @@ class BERTSelfAttention(Layer):
         return context_layer
 
 class BERTSelfOutput(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.dense = Dense(config.hidden_size,
                      input_shape=(config.hidden_size,),
                      kernel_initializer=create_initializer(config.initializer_range),
@@ -293,8 +293,8 @@ class BERTSelfOutput(Layer):
         return hidden_states
 
 class BERTAttention(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=False)
         self.selfattention = BERTSelfAttention(config, name="self")
         self.attention_output = BERTSelfOutput(config, name="output")
 
@@ -311,8 +311,8 @@ class BERTAttention(Layer):
         return attention_output
 
 class BERTIntermediate(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.dense = Dense(config.intermediate_size,
                            input_shape=(config.hidden_size,),
                            kernel_initializer=create_initializer(config.initializer_range),
@@ -332,8 +332,8 @@ class BERTIntermediate(Layer):
         return hidden_states
 
 class BERTOutput(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.dense = Dense(config.hidden_size,
                            input_shape=(config.intermediate_size,),
                            kernel_initializer=create_initializer(config.initializer_range),
@@ -359,8 +359,8 @@ class BERTOutput(Layer):
         return hidden_states
 
 class BERTLayer(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.attention = BERTAttention(config, name="attention")
         self.intermediate = BERTIntermediate(config, name="intermediate")
         self.bert_layer_output = BERTOutput(config, name="output")
@@ -379,8 +379,8 @@ class BERTLayer(Layer):
         return bert_layer_output
 
 class BERTEncoder(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.config = config
         self.layers = []
         for idx in range(config.num_hidden_layers):
@@ -403,8 +403,8 @@ class BERTEncoder(Layer):
         return hidden_states
 
 class BERTPooler(Layer):
-    def __init__(self, config, name):
-        super().__init__(name=name)
+    def __init__(self, config, name, trainable=False):
+        super().__init__(name=name, trainable=trainable)
         self.dense = Dense(config.hidden_size,
                            input_shape=(config.hidden_size,),
                            kernel_initializer=create_initializer(config.initializer_range),
