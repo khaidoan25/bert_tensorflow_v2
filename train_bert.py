@@ -1,7 +1,7 @@
-# import sys
-# import os
-# sys.path.append(os.path.join(os.getcwd()))
-# print(sys.path)
+import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.abspath(__file__),"../")))
+print(sys.path)
 from tqdm import tqdm
 import tensorflow as tf
 import tokenization as tokenization
