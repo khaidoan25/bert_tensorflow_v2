@@ -103,5 +103,5 @@ venv.bak/
 # mypy
 .mypy_cache/
 
-.new_bert_checkpoint/
+./new_bert_checkpoint/
 /.vscode/
