@@ -431,11 +431,11 @@ class BERTPooler(Layer):
         return sequence_output, pooled_output
 
 class BERTModel(Model):
-    def __init__(self, config: BertConfig):
+    def __init__(self, config: BertConfig, trainable=False):
         super().__init__()
-        self.embedding = BERTEmbeddings(config, name="embeddings")
-        self.encoder = BERTEncoder(config, name="encoder")
-        self.pooler = BERTPooler(config, name="pooler")
+        self.embedding = BERTEmbeddings(config, name="embeddings", trainable=trainable)
+        self.encoder = BERTEncoder(config, name="encoder", trainable=trainable)
+        self.pooler = BERTPooler(config, name="pooler", trainable=trainable)
 
     def call(self, input_ids, segment_ids=None, attention_mask=None):
         """
