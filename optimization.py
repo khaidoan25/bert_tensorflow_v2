@@ -36,8 +36,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
         warmup_learning_rate = init_lr * warmup_percent_done
 
         is_warmup = tf.cast(global_steps_int < warmup_steps_int, tf.float32)
-        learning_rate = (
-            (1.0 - is_warmup) * learning_rate + is_warmup * warmup_learning_rate)
+        learning_rate = ((1.0 - is_warmup) * learning_rate + is_warmup * warmup_learning_rate)
 
     # It is recommended that you use this optimizer for fine tuning, since this
     # is how the model was trained (note that the Adam m/v variables are NOT
@@ -70,7 +69,7 @@ def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps, use_tpu):
     return train_op
 
 
-class AdamWeightDecayOptimizer(tf.train.Optimizer):
+class AdamWeightDecayOptimizer(tf.keras.optimizers.Optimizer):
     """A basic Adam optimizer that includes "correct" L2 weight decay."""
 
     def __init__(self,
@@ -100,18 +99,30 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
 
             param_name = self._get_variable_name(param.name)
 
-            m = tf.get_variable(
+            # m = tf.get_variable(
+            #     name=param_name + "/adam_m",
+            #     shape=param.shape.as_list(),
+            #     dtype=tf.float32,
+            #     trainable=False,
+            #     initializer=tf.zeros_initializer())
+            m = tf.Variable(
+                initial_value=tf.zeros(param.shape.as_list()),
+                trainable=False,
                 name=param_name + "/adam_m",
-                shape=param.shape.as_list(),
-                dtype=tf.float32,
+                dtype=tf.float32
+            )
+            # v = tf.get_variable(
+            #     name=param_name + "/adam_v",
+            #     shape=param.shape.as_list(),
+            #     dtype=tf.float32,
+            #     trainable=False,
+            #     initializer=tf.zeros_initializer())
+            v = tf.Variable(
+                initial_value=tf.zeros(param.shape.as_list()),
                 trainable=False,
-                initializer=tf.zeros_initializer())
-            v = tf.get_variable(
                 name=param_name + "/adam_v",
-                shape=param.shape.as_list(),
-                dtype=tf.float32,
-                trainable=False,
-                initializer=tf.zeros_initializer())
+                dtype=tf.float32
+            )
 
             # Standard Adam update.
             next_m = (
@@ -126,7 +137,7 @@ class AdamWeightDecayOptimizer(tf.train.Optimizer):
             # the correct way of using L2 regularization/weight decay with Adam,
             # since that will interact with the m and v parameters in strange ways.
             #
-            # Instead we want ot decay the weights in a manner that doesn't interact
+            # Instead we want to decay the weights in a manner that doesn't interact
             # with the m/v parameters. This is equivalent to adding the square
             # of the weights to the loss with plain (non-momentum) SGD.
             if self._do_use_weight_decay(param_name):
